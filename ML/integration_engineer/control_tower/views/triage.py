@@ -10,6 +10,7 @@ import streamlit as st
 
 from ML.integration_engineer.control_tower import data, inference, labels, visuals
 from ML.integration_engineer.control_tower.theme import AMBER, CLASS_COLOR, CLASS_LABEL, CLASS_RANGE, LIME, MUTED, RED, SOFT, head
+from DL.integration_engineer import dl_inference
 
 HORIZON_KEYS = {"At discharge": ("A", 0), "+12 h": ("B12", 12), "+24 h": ("B24", 24), "+48 h": ("B48", 48)}
 CLASSES = ["ON_TIME", "AT_RISK", "CRITICAL_DELAY"]
@@ -118,6 +119,150 @@ def dossier(row: pd.Series, horizon: str, reveal: bool) -> None:
         st.markdown(f'<div class="note" style="margin-top:.5rem"><b style="color:{CLASS_COLOR[true]}">Actual outcome: {CLASS_LABEL[true]} ({row["dwell_hours"]:.0f} h).</b> {hit}</div>', unsafe_allow_html=True)
 
 
+def dl_comparison_panel() -> None:
+    """DL Intelligence panel: shows the DL model's architecture, validation metrics, and
+    its complementary role alongside the ML classifier. No DL re-inference is performed —
+    all numbers come from committed artifacts (checkpoint_metadata.json, evaluation_metrics.json).
+    """
+    st.markdown('<hr style="border:none;border-top:1px solid var(--rule);margin:1.4rem 0 .9rem">', unsafe_allow_html=True)
+    head(
+        "DL Model Intelligence",
+        "Complementary deep learning signal — port-level throughput & anchorage dwell forecasting.",
+        "model",
+    )
+
+    val_metrics = dl_inference.get_val_metrics()
+    train_stats = dl_inference.get_training_stats()
+
+    # ── Comparability notice ───────────────────────────────────────────────
+    st.markdown(
+        '<div class="note" style="margin-bottom:.8rem">'
+        '<b>Complementary, not directly comparable.</b> '
+        'The DL model solves a macro-level port throughput regression problem '
+        '(7-day vessel-call & anchorage waiting-time forecast across 2,065 global ports), '
+        'while the ML model above solves a micro-level per-container dwell classification problem at TPS Surabaya. '
+        'Together they provide two complementary layers of supply-chain intelligence: '
+        '<i>terminal-level triage</i> (ML) and <i>global network context</i> (DL).'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Side-by-side: ML snapshot vs DL snapshot ──────────────────────────
+    ml_col, dl_col = st.columns(2, gap="large")
+
+    with ml_col:
+        st.markdown(
+            f'<div class="bento">'
+            f'<div class="cell s6"><div class="k">ML MODEL (deployed)</div>'
+            f'<div class="v" style="font-size:1.3rem">{inference.MODEL_VERSION}</div>'
+            f'</div>'
+            f'<div class="cell s3"><div class="k">Task</div><div class="v" style="font-size:1rem">3-Class Triage</div>'
+            f'<div class="n">ON_TIME · AT_RISK · CRITICAL_DELAY</div></div>'
+            f'<div class="cell s3"><div class="k">Granularity</div><div class="v" style="font-size:1rem">Per container</div>'
+            f'<div class="n">Single discharge event · TPS terminal</div></div>'
+            f'<div class="cell s3"><div class="k">Input features</div><div class="v" style="font-size:1.4rem">13</div>'
+            f'<div class="n">Arrival-time predictors</div></div>'
+            f'<div class="cell s3"><div class="k">Val macro F1</div><div class="v" style="font-size:1.4rem">0.85</div>'
+            f'<div class="n">20,879 val containers</div></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    with dl_col:
+        st.markdown(
+            f'<div class="bento">'
+            f'<div class="cell s6"><div class="k">DL MODEL (Phase 3.4 Final)</div>'
+            f'<div class="v" style="font-size:1.05rem">{dl_inference.DL_MODEL_NAME}</div>'
+            f'</div>'
+            f'<div class="cell s3"><div class="k">Task</div><div class="v" style="font-size:1rem">Throughput Forecast</div>'
+            f'<div class="n">7-day vessel calls + cargo tonnage</div></div>'
+            f'<div class="cell s3"><div class="k">Granularity</div><div class="v" style="font-size:1rem">Per port/day</div>'
+            f'<div class="n">2,065 global ports · daily sequence</div></div>'
+            f'<div class="cell s3"><div class="k">Input window</div><div class="v" style="font-size:1.4rem">30d × 20</div>'
+            f'<div class="n">T-2 availability-safe features</div></div>'
+            f'<div class="cell s3"><div class="k">Val R²</div><div class="v" style="font-size:1.4rem">{val_metrics["R²"]:.4f}</div>'
+            f'<div class="n">{val_metrics["Sequences"]} val sequences</div></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── DL Architecture details + Validation metrics ───────────────────────
+    st.markdown('<div style="height:.6rem"></div>', unsafe_allow_html=True)
+    arch_col, metrics_col, dwell_col = st.columns(3, gap="large")
+
+    with arch_col:
+        head("Architecture", "TemporalAttentionLSTMForecaster — Phase 3.4.", "model")
+        rows_html = "".join(
+            f'<dt>{html.escape(k)}</dt><dd>{html.escape(v)}</dd>'
+            for k, v in dl_inference.DL_ARCHITECTURE.items()
+        )
+        st.markdown(f'<dl class="kv">{rows_html}</dl>', unsafe_allow_html=True)
+        train_rows = "".join(
+            f'<dt>{html.escape(k)}</dt><dd>{html.escape(v)}</dd>'
+            for k, v in train_stats.items()
+        )
+        st.markdown(f'<dl class="kv" style="margin-top:.6rem">{train_rows}</dl>', unsafe_allow_html=True)
+
+    with metrics_col:
+        head("Throughput Forecast — Validation", "Port vessel-call volume (7-day forward sum).", "validation")
+        st.markdown(
+            f'<div class="bento">'
+            f'<div class="cell s3"><div class="k">R²</div>'
+            f'<div class="v" style="color:var(--lime)">{val_metrics["R²"]:.4f}</div></div>'
+            f'<div class="cell s3"><div class="k">MAE</div>'
+            f'<div class="v">{val_metrics["MAE"]:.3f}<small> calls</small></div></div>'
+            f'<div class="cell s3"><div class="k">RMSE</div>'
+            f'<div class="v">{val_metrics["RMSE"]:.3f}<small> calls</small></div></div>'
+            f'<div class="cell s3"><div class="k">Huber loss</div>'
+            f'<div class="v">{val_metrics["Huber"]:.3f}</div></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    with dwell_col:
+        head("Dwell Forecast — Validation & Test", "Anchorage waiting-time regression (hours).", "validation")
+        dm = dl_inference.DL_DWELL_METRICS
+        st.markdown(
+            f'<div class="bento">'
+            f'<div class="cell s3"><div class="k">Val R²</div>'
+            f'<div class="v" style="color:var(--lime)">{dm["R² (validation)"]:.3f}</div></div>'
+            f'<div class="cell s3"><div class="k">Val MAE</div>'
+            f'<div class="v">{dm["MAE (validation)"]:.2f}<small> h</small></div></div>'
+            f'<div class="cell s3"><div class="k">Test R²</div>'
+            f'<div class="v" style="color:var(--amber)">{dm["R² (test 2022)"]:.3f}</div></div>'
+            f'<div class="cell s3"><div class="k">Test MAE</div>'
+            f'<div class="v">{dm["MAE (test 2022)"]:.2f}<small> h</small></div></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="note" style="margin-top:.4rem">'
+            f'<b>vs naive persistence:</b> {dm["MAE reduction (test) vs naive"]} MAE reduction on 2022 held-out test set '
+            f'({dm["MAE reduction vs naive"]} val). 19 global ports benchmarked.</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Temporal Attention Profile ─────────────────────────────────────────
+    st.markdown('<div style="height:.4rem"></div>', unsafe_allow_html=True)
+    head(
+        "Temporal Attention Profile",
+        "Where the LSTM encoder focuses across the 30-day lookback window.",
+        "model",
+    )
+    ap = dl_inference.DL_ATTENTION_PROFILE
+    ap_rows = "".join(
+        f'<dt>{html.escape(k)}</dt><dd>{html.escape(v)}</dd>'
+        for k, v in ap.items()
+    )
+    st.markdown(
+        f'<dl class="kv">{ap_rows}</dl>'
+        f'<div class="note" style="margin-top:.5rem">'
+        f'Profile computed over 51,200 sequences. '
+        f'Additive Bahdanau-style attention with softmax normalisation over T=30 steps.</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def score_mode() -> None:
     ref = data.live()
     if inference.load_bundle() is None:
@@ -173,6 +318,9 @@ def score_mode() -> None:
         if notes:
             notes_html = "".join(f"<li>{html.escape(n)}</li>" for n in notes)
             st.markdown(f'<div class="note" style="margin-top:.4rem"><b>Notice:</b><ul style="margin:.2rem 0 0 1rem">{notes_html}</ul></div>', unsafe_allow_html=True)
+
+    # ── DL Comparison Panel (full width below the ML scoring columns) ──────
+    dl_comparison_panel()
 
 
 def replay_mode() -> None:
