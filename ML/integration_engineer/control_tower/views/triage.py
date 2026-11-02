@@ -284,43 +284,41 @@ def score_mode() -> None:
         head("Container Dwell Risk Score", "Real-time risk scoring and operational triage directive.", "model")
         if not submitted and "last_score" not in st.session_state:
             st.markdown('<div class="unavailable"><b>Enter container telemetry on the left and select Score container.</b></div>', unsafe_allow_html=True)
-            return
-        if submitted:
-            errors, notes = inference.validate_inputs(carrier, ctr_type, int(ctr_size), float(gross), day, int(hour), ref)
-            if errors:
-                st.session_state.pop("last_score", None)
-                for e in errors:
-                    st.error(e)
-                return
-            feats = inference.build_features(carrier, ctr_type, int(ctr_size), float(gross), day, int(hour), ref)
-            st.session_state["last_score"] = {"res": inference.score(feats), "feats": feats, "notes": notes}
-        s = st.session_state["last_score"]
-        res, feats, notes = s["res"], s["feats"], s["notes"]
-        a, b = st.columns([7, 4], gap="medium")
-        with a:
-            verdict_block(res["pred_name"], res["proba"], "At discharge")
-            action_block(res["pred"])
-        with b:
-            visuals.show_svg(visuals.simplex_single(data.model()["horizons"]["A"]["simplex"], res["proba"], res["pred_name"]), 250)
-        
-        head("Key Risk Factors", "Top feature contributions influencing this score.", "model")
-        peak = max(abs(r["contribution"]) for r in res["explanation"]) or 1
-        rows = []
-        for r in res["explanation"][:8]:
-            w = abs(r["contribution"]) / peak * 50
-            left_pos = 50 if r["contribution"] >= 0 else 50 - w
-            color = CLASS_COLOR[res["pred_name"]] if r["contribution"] >= 0 else "#5f5f58"
-            val = r["value"]
-            shown = f"{val:,.2f}".rstrip("0").rstrip(".") if isinstance(val, float) else str(val)
-            rows.append(f'<div class="shap"><span>{labels.FEATURE_LABEL.get(r["feature"], r["feature"])}: <b style="color:#F4F4EE;font-weight:500">{html.escape(shown)}</b></span><div class="bar"><span style="left:{left_pos:.1f}%;width:{w:.1f}%;background:{color}"></span><div class="mid"></div></div><span style="text-align:right">{"+" if r["contribution"]>=0 else "−"}{abs(r["contribution"]):.3f}</span></div>')
-        st.markdown("".join(rows), unsafe_allow_html=True)
-        st.markdown(f"""<dl class="kv" style="margin-top:.7rem"><dt>Prediction time</dt><dd>{res["timestamp"]}</dd><dt>Model</dt><dd>{inference.MODEL_VERSION}</dd><dt>Latency</dt><dd>{res["latency_ms"]:.1f} ms</dd></dl>""", unsafe_allow_html=True)
-        if notes:
-            notes_html = "".join(f"<li>{html.escape(n)}</li>" for n in notes)
-            st.markdown(f'<div class="note" style="margin-top:.4rem"><b>Notice:</b><ul style="margin:.2rem 0 0 1rem">{notes_html}</ul></div>', unsafe_allow_html=True)
-
-    # ── DL Comparison Panel (full width below the ML scoring columns) ──────
-    dl_comparison_panel()
+        else:
+            if submitted:
+                errors, notes = inference.validate_inputs(carrier, ctr_type, int(ctr_size), float(gross), day, int(hour), ref)
+                if errors:
+                    st.session_state.pop("last_score", None)
+                    for e in errors:
+                        st.error(e)
+                else:
+                    feats = inference.build_features(carrier, ctr_type, int(ctr_size), float(gross), day, int(hour), ref)
+                    st.session_state["last_score"] = {"res": inference.score(feats), "feats": feats, "notes": notes}
+            if "last_score" in st.session_state:
+                s = st.session_state["last_score"]
+                res, feats, notes = s["res"], s["feats"], s["notes"]
+                a, b = st.columns([7, 4], gap="medium")
+                with a:
+                    verdict_block(res["pred_name"], res["proba"], "At discharge")
+                    action_block(res["pred"])
+                with b:
+                    visuals.show_svg(visuals.simplex_single(data.model()["horizons"]["A"]["simplex"], res["proba"], res["pred_name"]), 250)
+                
+                head("Key Risk Factors", "Top feature contributions influencing this score.", "model")
+                peak = max(abs(r["contribution"]) for r in res["explanation"]) or 1
+                rows = []
+                for r in res["explanation"][:8]:
+                    w = abs(r["contribution"]) / peak * 50
+                    left_pos = 50 if r["contribution"] >= 0 else 50 - w
+                    color = CLASS_COLOR[res["pred_name"]] if r["contribution"] >= 0 else "#5f5f58"
+                    val = r["value"]
+                    shown = f"{val:,.2f}".rstrip("0").rstrip(".") if isinstance(val, float) else str(val)
+                    rows.append(f'<div class="shap"><span>{labels.FEATURE_LABEL.get(r["feature"], r["feature"])}: <b style="color:#F4F4EE;font-weight:500">{html.escape(shown)}</b></span><div class="bar"><span style="left:{left_pos:.1f}%;width:{w:.1f}%;background:{color}"></span><div class="mid"></div></div><span style="text-align:right">{"+" if r["contribution"]>=0 else "−"}{abs(r["contribution"]):.3f}</span></div>')
+                st.markdown("".join(rows), unsafe_allow_html=True)
+                st.markdown(f"""<dl class="kv" style="margin-top:.7rem"><dt>Prediction time</dt><dd>{res["timestamp"]}</dd><dt>Model</dt><dd>{inference.MODEL_VERSION}</dd><dt>Latency</dt><dd>{res["latency_ms"]:.1f} ms</dd></dl>""", unsafe_allow_html=True)
+                if notes:
+                    notes_html = "".join(f"<li>{html.escape(n)}</li>" for n in notes)
+                    st.markdown(f'<div class="note" style="margin-top:.4rem"><b>Notice:</b><ul style="margin:.2rem 0 0 1rem">{notes_html}</ul></div>', unsafe_allow_html=True)
 
 
 def replay_mode() -> None:
@@ -358,3 +356,4 @@ def render() -> None:
         score_mode()
     else:
         replay_mode()
+    dl_comparison_panel()
