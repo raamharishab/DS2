@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import html as _html
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from ML.integration_engineer.control_tower import data, labels, visuals
 from ML.integration_engineer.control_tower.theme import AMBER, CLASS_COLOR, CLASS_LABEL, INK, LIME, MUTED, PAPER, PLOTLY_CONFIG, RED, RULE, SOFT, head, plotly_layout
+from DL.integration_engineer import dl_inference
 
 FAMILY_MARK = {"Direct classifier": ("circle", PAPER), "Stage-time stacking": ("diamond", LIME), "Survival": ("square", AMBER), "Ordinal": ("triangle-up", SOFT), "Regression": ("x", MUTED), "Legacy 13 features": ("circle-open", RED)}
 
@@ -88,3 +91,110 @@ def render() -> None:
     with d:
         head("Dynamic Feature Importance", "Feature gain evolution across horizons.", "validation")
         visuals.show_svg(visuals.bump_svg(m["bump"], labels.FEATURE_LABEL), 380)
+
+    # ── DL Model Evaluation ────────────────────────────────────────────────
+    st.markdown('<hr style="border:none;border-top:1px solid var(--rule);margin:1.6rem 0 .9rem">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="thesis" style="font-size:clamp(1.4rem,2.5vw,2.2rem)">'
+        'DL Model Evaluation</div>'
+        '<div class="lede">TemporalAttentionLSTMForecaster — global port-level throughput &amp; anchorage dwell regression.</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="note" style="margin-bottom:.8rem">'
+        '<b>Different task, complementary signal.</b> '
+        'The DL model performs port-level throughput regression '
+        '(7-day vessel-call &amp; anchorage waiting-time forecast across 2,065 global ports). '
+        'Metrics below are from committed training artifacts and are not directly comparable '
+        'to the per-container classification metrics above.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    val_metrics = dl_inference.get_val_metrics()
+    train_stats = dl_inference.get_training_stats()
+
+    # ── Architecture + Training stats ──────────────────────────────────────
+    dl_a, dl_b = st.columns([5, 7], gap="large")
+    with dl_a:
+        head("Architecture", "TemporalAttentionLSTMForecaster — Phase 3.4 Final.", "model")
+        arch_rows = "".join(
+            f'<dt>{_html.escape(k)}</dt><dd>{_html.escape(v)}</dd>'
+            for k, v in dl_inference.DL_ARCHITECTURE.items()
+        )
+        st.markdown(f'<dl class="kv">{arch_rows}</dl>', unsafe_allow_html=True)
+        train_rows = "".join(
+            f'<dt>{_html.escape(k)}</dt><dd>{_html.escape(v)}</dd>'
+            for k, v in train_stats.items()
+        )
+        st.markdown(f'<dl class="kv" style="margin-top:.6rem">{train_rows}</dl>', unsafe_allow_html=True)
+
+    with dl_b:
+        head("Validation Metrics", "Best checkpoint performance on held-out sequences.", "validation")
+        st.markdown(
+            f'<div class="bento" style="margin-top:.4rem">'
+            f'<div class="cell"><div class="k">Val R²</div>'
+            f'<div class="v" style="color:var(--lime)">{val_metrics["R²"]:.4f}</div>'
+            f'<div class="n">{val_metrics["Sequences"]} sequences</div></div>'
+            f'<div class="cell"><div class="k">Val MAE</div>'
+            f'<div class="v">{val_metrics["MAE"]:.3f}<small> calls</small></div></div>'
+            f'<div class="cell"><div class="k">Val RMSE</div>'
+            f'<div class="v">{val_metrics["RMSE"]:.3f}<small> calls</small></div></div>'
+            f'<div class="cell"><div class="k">Huber Loss</div>'
+            f'<div class="v">{val_metrics["Huber"]:.3f}</div></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Dwell Forecasting ──────────────────────────────────────────────────
+    st.markdown('<div style="height:.6rem"></div>', unsafe_allow_html=True)
+    head("Dwell Forecasting — Validation & Test", "Anchorage waiting-time regression (hours).", "validation")
+    dm = dl_inference.DL_DWELL_METRICS
+    dw_a, dw_b = st.columns(2, gap="large")
+    with dw_a:
+        st.markdown(
+            f'<div class="bento">'
+            f'<div class="cell s3"><div class="k">Val R²</div>'
+            f'<div class="v" style="color:var(--lime)">{dm["R² (validation)"]:.3f}</div></div>'
+            f'<div class="cell s3"><div class="k">Val MAE</div>'
+            f'<div class="v">{dm["MAE (validation)"]:.2f}<small> h</small></div></div>'
+            f'<div class="cell s3"><div class="k">Val RMSE</div>'
+            f'<div class="v">{dm["RMSE (validation)"]:.2f}<small> h</small></div></div>'
+            f'<div class="cell s3"><div class="k">vs Naive</div>'
+            f'<div class="v">{dm["MAE reduction vs naive"]}</div>'
+            f'<div class="n">MAE reduction</div></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with dw_b:
+        st.markdown(
+            f'<div class="bento">'
+            f'<div class="cell s3"><div class="k">Test R² (2022)</div>'
+            f'<div class="v" style="color:var(--amber)">{dm["R² (test 2022)"]:.3f}</div></div>'
+            f'<div class="cell s3"><div class="k">Test MAE</div>'
+            f'<div class="v">{dm["MAE (test 2022)"]:.2f}<small> h</small></div></div>'
+            f'<div class="cell s3"><div class="k">Test RMSE</div>'
+            f'<div class="v">{dm["RMSE (test 2022)"]:.2f}<small> h</small></div></div>'
+            f'<div class="cell s3"><div class="k">vs Naive</div>'
+            f'<div class="v">{dm["MAE reduction (test) vs naive"]}</div>'
+            f'<div class="n">MAE reduction (held-out)</div></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Temporal Attention Profile ─────────────────────────────────────────
+    st.markdown('<div style="height:.6rem"></div>', unsafe_allow_html=True)
+    head("Temporal Attention Profile", "Where the LSTM encoder focuses across the 30-day lookback window.", "model")
+    ap = dl_inference.DL_ATTENTION_PROFILE
+    ap_rows = "".join(
+        f'<dt>{_html.escape(k)}</dt><dd>{_html.escape(v)}</dd>'
+        for k, v in ap.items()
+    )
+    st.markdown(
+        f'<dl class="kv">{ap_rows}</dl>'
+        f'<div class="note" style="margin-top:.5rem">'
+        f'Profile computed over 51,200 sequences. '
+        f'Additive Bahdanau-style attention with softmax normalisation over T=30 steps.</div>',
+        unsafe_allow_html=True,
+    )

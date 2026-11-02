@@ -28,7 +28,7 @@ DL_MODEL_NAME = "TemporalAttentionLSTM · Phase 3.4 Final"
 DL_MODEL_TYPE = "TemporalAttentionLSTMForecaster"
 DL_ARCHITECTURE = {
     "Input window": "30 days × 20 features",
-    "LSTM layers": "2-layer bidirectional encoder (h=64)",
+    "LSTM layers": "2-layer unidirectional encoder (hidden=64)",
     "Attention": "Additive Bahdanau temporal attention (dim=32)",
     "Output": "Residual regression head → predicted throughput",
     "Training data": "3,696,350 sequences · 2,065 global ports",
@@ -61,11 +61,13 @@ DL_DWELL_METRICS = {
 
 # ── Attention profile — top-weighted timesteps ─────────────────────────────
 DL_ATTENTION_PROFILE = {
-    "Most attended": "t-2 (most recent, 14.4% weight)",
-    "Second": "t-3 (11.5%)",
+    "Most attended": "t-2 (most recent, 13.3% weight)",
+    "Second": "t-3 (10.5%)",
     "Third": "t-4 (8.0%)",
-    "Recency bias": "Strong — final 7 days carry ~75% of total attention mass",
-    "Earliest 14 days": "<10% combined attention (long-horizon memory suppressed)",
+    "Recent 7 days (t-2 … t-8)": "61.6% of total attention mass",
+    "Mid 16 days (t-9 … t-24)": "36.6% of total attention mass",
+    "Oldest 7 days (t-25 … t-31)": "1.8% (long-horizon memory suppressed)",
+    "Entropy": "2.85 / 3.40 max → Focused/Spiked (dispersion ratio 0.84)",
 }
 
 
@@ -134,3 +136,4 @@ def get_training_stats() -> Dict[str, Any]:
         "Training time": "841s",
         "Inference": "32,299 seq/s",
     }
+
